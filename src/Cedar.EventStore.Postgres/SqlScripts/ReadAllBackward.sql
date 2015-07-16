@@ -1,7 +1,7 @@
 SELECT 
             streams.id_original As stream_id,
             events.stream_version,
-            events.ordinal,
+            events.ordinal::bigint, --need to cast to bigint as Npgsql2 treats SERIAL as int32
             events.id AS event_id,
             events.created,
             events.type,

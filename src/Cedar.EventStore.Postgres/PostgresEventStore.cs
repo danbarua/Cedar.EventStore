@@ -61,7 +61,7 @@
             var streamIdInfo = HashStreamId(streamId);
 
             using(var connection = await _createAndOpenConnection())
-            using(var tx = connection.BeginTransaction(IsolationLevel.Serializable))
+            using(var tx = connection.BeginTransaction(IsolationLevel.RepeatableRead))
             {
                 int streamIdInternal = -1;
                 int currentVersion = expectedVersion;
@@ -132,28 +132,27 @@
                     }
                 }
 
-                using(
-                    var writer =
-                        connection.BeginBinaryImport(Scripts.BulkCopyEvents)
-                    )
+                foreach(var @event in events)
                 {
-                    foreach(var @event in events)
+                    if(cancellationToken.IsCancellationRequested)
                     {
-                        if(cancellationToken.IsCancellationRequested)
-                        {
-                            writer.Cancel();
-                            tx.Rollback();
-                        }
+                        tx.Rollback();
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
 
-                        currentVersion++;
-                        writer.StartRow();
-                        writer.Write(streamIdInternal, NpgsqlDbType.Integer);
-                        writer.Write(currentVersion, NpgsqlDbType.Integer);
-                        writer.Write(@event.EventId, NpgsqlDbType.Uuid);
-                        writer.Write(SystemClock.GetUtcNow(), NpgsqlDbType.TimestampTZ);
-                        writer.Write(@event.Type);
-                        writer.Write(@event.JsonData, NpgsqlDbType.Json);
-                        writer.Write(@event.JsonMetadata, NpgsqlDbType.Json);
+                    currentVersion++;
+
+                    using (var command = new NpgsqlCommand(Scripts.InsertEvents, connection, tx) { CommandType = CommandType.Text })
+                    {
+                        command.Parameters.AddWithValue(":stream_id_internal", NpgsqlDbType.Integer, streamIdInternal);
+                        command.Parameters.AddWithValue(":stream_version", NpgsqlDbType.Integer, currentVersion);
+                        command.Parameters.AddWithValue(":id", NpgsqlDbType.Uuid, @event.EventId);
+                        command.Parameters.AddWithValue(":created", NpgsqlDbType.TimestampTZ, SystemClock.GetUtcNow());
+                        command.Parameters.AddWithValue(":type", NpgsqlDbType.Text, @event.Type);
+                        command.Parameters.AddWithValue(":json_data", NpgsqlDbType.Json, @event.JsonData);
+                        command.Parameters.AddWithValue(":json_metadata", NpgsqlDbType.Json, @event.JsonMetadata);
+
+                        await command.ExecuteNonQueryAsync(cancellationToken);
                     }
                 }
 
@@ -209,10 +208,11 @@
                 }
                 catch(NpgsqlException ex)
                 {
-                    if(ex.MessageText == "WrongExpectedVersion")
+                    if(ex.BaseMessage == "WrongExpectedVersion")
                     {
                         throw new WrongExpectedVersionException(Messages.DeleteStreamFailedWrongExpectedVersion.FormatWith(streamIdInfo.StreamIdOriginal, expectedVersion));
                     }
+
                     throw;
                 }
             }
@@ -358,8 +358,8 @@
                     await reader.NextResultAsync(cancellationToken).NotOnCapturedContext();
                     while(await reader.ReadAsync(cancellationToken).NotOnCapturedContext())
                     {
-                        var StreamVersion1 = reader.GetInt32(0);
-                        var ordinal = reader.GetInt64(1);
+                        var StreamVersion1 = reader.GetInt32(0); //todo: this will blow up one day
+                        var ordinal = reader.GetInt64(1); //in Npgsql3, this is long, in Npgsql2 this is int.
                         var eventId = reader.GetGuid(2);
                         var created = reader.GetDateTime(3);
                         var type = reader.GetString(4);
@@ -367,7 +367,7 @@
                         var jsonMetadata = reader.GetString(6);
 
                         var streamEvent = new StreamEvent(
-                            streamId, eventId, StreamVersion1, ordinal.ToString(), created, type, jsonData, jsonMetadata);
+                            streamId, eventId, (int)StreamVersion1, ordinal.ToString(), created, type, jsonData, jsonMetadata);
 
                         streamEvents.Add(streamEvent);
                     }
