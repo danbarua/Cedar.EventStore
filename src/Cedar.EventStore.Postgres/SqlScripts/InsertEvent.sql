@@ -1,0 +1,2 @@
+﻿INSERT INTO events(stream_id_internal, stream_version, id, created, type, json_data, json_metadata)
+VALUES (:stream_id_internal, get_next_stream_version(:stream_id_internal), :id, :created, :type, :json_data, :json_metadata);

@@ -142,28 +142,24 @@
                     }
                 }
 
-                using(
-                    var writer =
-                        connection.BeginBinaryImport(Scripts.BulkCopyEvents)
-                    )
+                foreach (var @event in events)
                 {
-                    foreach(var @event in events)
+                    if (cancellationToken.IsCancellationRequested)
                     {
-                        if(cancellationToken.IsCancellationRequested)
-                        {
-                            writer.Cancel();
-                            tx.Rollback();
-                        }
+                        tx.Rollback();
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
 
-                        currentVersion++;
-                        writer.StartRow();
-                        writer.Write(streamIdInternal, NpgsqlDbType.Integer);
-                        writer.Write(currentVersion, NpgsqlDbType.Integer);
-                        writer.Write(@event.EventId, NpgsqlDbType.Uuid);
-                        writer.Write(SystemClock.GetUtcNow(), NpgsqlDbType.TimestampTZ);
-                        writer.Write(@event.Type);
-                        writer.Write(@event.JsonData, NpgsqlDbType.Json);
-                        writer.Write(@event.JsonMetadata, NpgsqlDbType.Json);
+                    using (var command = new NpgsqlCommand(Scripts.InsertEvent, connection, tx) { CommandType = CommandType.Text })
+                    {
+                        command.Parameters.AddWithValue(":stream_id_internal", NpgsqlDbType.Integer, streamIdInternal);
+                        command.Parameters.AddWithValue(":id", NpgsqlDbType.Uuid, @event.EventId);
+                        command.Parameters.AddWithValue(":created", NpgsqlDbType.TimestampTZ, SystemClock.GetUtcNow());
+                        command.Parameters.AddWithValue(":type", NpgsqlDbType.Text, @event.Type);
+                        command.Parameters.AddWithValue(":json_data", NpgsqlDbType.Json, @event.JsonData);
+                        command.Parameters.AddWithValue(":json_metadata", NpgsqlDbType.Json, @event.JsonMetadata);
+
+                        await command.ExecuteNonQueryAsync(cancellationToken);
                     }
                 }
 

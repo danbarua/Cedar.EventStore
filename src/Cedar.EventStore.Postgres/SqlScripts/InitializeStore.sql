@@ -4,9 +4,22 @@ CREATE TABLE streams(
     id_original text NOT NULL,
     is_deleted boolean DEFAULT (false) NOT NULL
 );
+
 CREATE UNIQUE INDEX ix_streams_id
 ON streams
 USING btree(id);
+
+CREATE OR REPLACE FUNCTION get_next_stream_version(_stream_id integer)
+RETURNS integer AS
+$BODY$
+DECLARE
+    _result integer;
+BEGIN
+ SELECT INTO _result nextval('stream_version_' || _stream_id::text);
+ RETURN _result;
+END;
+$BODY$
+LANGUAGE plpgsql;
 
 CREATE TABLE events(
     stream_id_internal integer NOT NULL,
@@ -35,6 +48,8 @@ BEGIN
     RETURNING id_internal
     INTO _result;
 
+    EXECUTE 'CREATE SEQUENCE stream_version_' || _result::text  ||' MINVALUE 0;';
+
     RETURN _result;
 END;
 $BODY$
@@ -47,13 +62,9 @@ BEGIN
     RETURN QUERY
     SELECT streams.id_internal,
            streams.is_deleted,
-           events.stream_version
+           currval('stream_version_' || streams.id_internal)::integer
     FROM streams
-    LEFT JOIN events
-          ON events.stream_id_internal = streams.id_internal
-          AND (events.stream_version >= _expected_version OR _expected_version < 0)
     WHERE streams.id = _stream_id
-    ORDER BY events.ordinal DESC
     LIMIT 1;
 END;
 $BODY$

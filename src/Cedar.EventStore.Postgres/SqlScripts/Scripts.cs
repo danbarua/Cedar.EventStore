@@ -19,6 +19,11 @@
             get { return GetScript("DropAll"); }
         }
 
+        public static string InsertEvent
+        {
+            get { return GetScript("InsertEvent"); }
+        }
+
         public static string BulkCopyEvents
         {
             get { return GetScript("BulkCopyEvents"); }
