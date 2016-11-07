@@ -7,12 +7,16 @@
     internal class Scripts
     {
         internal readonly string Schema;
+
+        internal readonly bool UseJsonB;
+
         private readonly ConcurrentDictionary<string, string> _scripts
             = new ConcurrentDictionary<string, string>();
 
-        internal Scripts(string schema)
+        internal Scripts(string schema, bool useJsonB = false)
         {
             Schema = schema;
+            UseJsonB = useJsonB;
         }
 
         internal string AppendStreamExpectedVersionAny => GetScript(nameof(AppendStreamExpectedVersionAny));
@@ -64,7 +68,8 @@
                         {
                             return reader
                                 .ReadToEnd()
-                                .Replace("public.", Schema + ".");
+                                .Replace("$schema$", Schema)
+                                .Replace("$jsonType$", UseJsonB ? "jsonb" : "json");
                         }
                     }
                 });

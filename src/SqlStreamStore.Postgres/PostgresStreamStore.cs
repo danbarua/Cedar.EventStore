@@ -17,6 +17,15 @@
             this._settings = settings;
         }
 
+        public Task InitializeStore()
+        {
+            /* "PostgreSQL 9.3.4, compiled by Visual C++ build 1600, 64-bit"
+             * "PostgreSQL 9.4.4 on x86_64-unknown-linux-gnu, compiled by gcc (Ubuntu 4.8.2-19ubuntu1) 4.8.2, 64-bit"
+             */
+
+            throw new NotImplementedException();
+        }
+
         protected override Task<ReadAllPage> ReadAllForwardsInternal(
             long fromPositionExlusive,
             int maxCount,
